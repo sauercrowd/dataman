@@ -1,63 +1,57 @@
 package main
 
-import(
-	dp "github.com/sauercrowd/datafill/dataprovider"
-	dr "github.com/sauercrowd/datafill/datareceiver"
-	df "github.com/sauercrowd/datafill/definitions"
-	tools "github.com/sauercrowd/datafill/tools"
+import (
 	"fmt"
+
+	dp "github.com/sauercrowd/dataman/pkg/dataprovider"
+	dr "github.com/sauercrowd/dataman/pkg/datareceiver"
+	df "github.com/sauercrowd/dataman/pkg/definitions"
+	flags "github.com/sauercrowd/dataman/pkg/flags"
 )
 
-func main(){
-	const receiverStr = "cassandra"
-	const providerUrl = "https://twitter.com/realDonaldTrump"
-	//const providerUrl = "http://trumptwitterarchive.com/#/archive/account/realdonaldtrump"
-	const limit       = 200
+func main() {
+	f := flags.ParseFlags()
+	const limit = 2000
 
-	var r df.DataReceiver
-
-	config := tools.GetConfigFromFile("config.props")
+	receivers := make([]df.DataReceiver, 0)
 
 	//receiver switch
-	switch{
+	switch {
 	case receiverStr == "csv":
 		csv := &dr.CSVProvider{}
-		csv.Setup("./donaldTweets.csv","\t")
-		r = csv
-		break
+		csv.Setup("./donaldTweets.csv", "\t")
+		receivers = append(receivers, csv)
 	case receiverStr == "json":
 		json := &dr.JsonProvider{}
 		json.Setup("./output.json")
-		r = json
-		break
+		receivers = append(receivers, json)
 	case receiverStr == "cassandra":
 		cass := &dr.CassandraProvider{}
-		cass.Setup("127.0.0.1","data","{'class': 'SimpleStrategy', 'replication_factor' : 1}")
-		r = cass
-		break
+		cass.Setup("127.0.0.1", "data", "{'class': 'SimpleStrategy', 'replication_factor' : 1}")
+		receivers = append(receivers, cass)
 	case receiverStr == "stdout":
 		r = &dr.Stdout{}
-		break
-	default:
-		fmt.Println("No matching data receiver found")
-		return
+		receivers = append(receivers, r)
 	}
 
 	//provider switch
-	switch{
+	switch {
 	case dp.CheckTwitter(providerUrl):
 		t := &dp.TwitterProvider{}
-		t.Login(config["TWITTER_CONSUMER_KEY"], config["TWITTER_CONSUMER_SECRET"])
-		t.GetTuples(r, providerUrl, limit)
+		t.Login(f.TwitterConsumerKey, f.TwitterConsumerSecret)
+		t.GetTuples(receivers, providerUrl, limit)
 		break
 	case dp.CheckTTA(providerUrl):
 		t := &dp.TTAProvider{}
-		t.Login(config["TWITTER_CONSUMER_KEY"], config["TWITTER_CONSUMER_SECRET"])
-		t.GetTuples(r, providerUrl, limit)
+		t.Login(f.TwitterConsumerKey, f.TwitterConsumerSecret) //still needed to get additional tweet informations
+		t.GetTuples(receivers, providerUrl, limit)
 		break
 	default:
-		fmt.Println("No matching data provider found")
-		break
+		log.Fatalf("No matching data provider found")
 	}
-	r.Finish()
+
+	//close everything
+	for _, r := receivers{
+		r.Finish()
+	}	
 }
